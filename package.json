@@ -33,6 +33,7 @@
   "dependencies": {
     "@pancakeswap/sdk": "^5.8.18",
     "@pancakeswap/universal-router-sdk": "^1.4.16",
+    "@pancakeswap/infinity-sdk": "^1.0.7",
     "@pancakeswap/routing-sdk": "workspace:*",
     "@pancakeswap/routing-sdk-addon-v3": "workspace:*",
     "@pancakeswap/routing-sdk-addon-v2": "workspace:*",

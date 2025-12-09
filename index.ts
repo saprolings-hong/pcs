@@ -52,7 +52,11 @@ const getArgs = () => {
   return args;
 };
 
-const getTokenBySymbol = (symbol: string): ERC20Token => {
+const getTokenBySymbol = (symbol: string): ERC20Token | Native => {
+  if (symbol.toLowerCase() === "bnb") {
+    return Native.onChain(ChainId.BSC);
+  }
+
   const token = bscTokens[symbol.toLowerCase() as keyof typeof bscTokens];
   if (!token) {
     throw new Error(`Token not found for symbol: ${symbol}`);
@@ -65,6 +69,7 @@ const swapOptions = (options: Partial<PancakeSwapOptions>): PancakeSwapOptions =
   if (options.fee) slippageTolerance = slippageTolerance.add(options.fee.fee);
   return {
     slippageTolerance,
+    deadlineOrPreviousBlockhash: BigInt(Math.floor(Date.now() / 1000) + 60 * 5),
     ...options,
   };
 };
@@ -190,6 +195,8 @@ const executeTransaction = async () => {
     data: calldata,
   });
 
+  // console.log("Calldata:", calldata)
+  // console.log("Value:", value)
   // console.log("Function Name:", functionName);
   // console.log("Args:", args);
 
@@ -197,7 +204,7 @@ const executeTransaction = async () => {
     to: pancakeRouterAddressInBsc,
     data: calldata,
     value: value,
-    gasLimit: ethers.BigNumber.from(600000),
+    gasLimit: ethers.BigNumber.from(700000),
   });
 
   const receipt = await tx.wait();
