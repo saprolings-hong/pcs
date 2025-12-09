@@ -1,0 +1,36 @@
+{
+  "name": "@pancakeswap/utils",
+  "version": "8.0.1",
+  "scripts": {
+    "test": "vitest --run"
+  },
+  "private": true,
+  "peerDependencies": {
+    "@pancakeswap/localization": "workspace:*",
+    "dayjs": "^1.11.10",
+    "lodash": "^4.17.21",
+    "styled-components": "^6.0.7",
+    "viem": "catalog:"
+  },
+  "devDependencies": {
+    "@pancakeswap/sdk": "5.8.18",
+    "@pancakeswap/swap-sdk-core": "1.5.1",
+    "@types/lodash": "^4.14.168",
+    "bignumber.js": "^9.0.0",
+    "jotai": "catalog:",
+    "styled-components": "6.0.7",
+    "viem": "catalog:"
+  },
+  "peerDependenciesMeta": {
+    "@pancakeswap/localization": {
+      "optional": true
+    },
+    "viem": {
+      "optional": true
+    }
+  },
+  "dependencies": {
+    "@pancakeswap/chains": "0.7.0",
+    "url-parse": "^1.5.10"
+  }
+}
