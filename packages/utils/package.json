@@ -10,7 +10,7 @@
     "dayjs": "^1.11.10",
     "lodash": "^4.17.21",
     "styled-components": "^6.0.7",
-    "viem": "catalog:"
+    "viem": "2.37.13"
   },
   "devDependencies": {
     "@pancakeswap/sdk": "5.8.18",
@@ -19,7 +19,7 @@
     "bignumber.js": "^9.0.0",
     "jotai": "catalog:",
     "styled-components": "6.0.7",
-    "viem": "catalog:"
+    "viem": "2.37.13"
   },
   "peerDependenciesMeta": {
     "@pancakeswap/localization": {

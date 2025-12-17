@@ -30,7 +30,7 @@
     "@pancakeswap/routing-sdk-addon-v3": "workspace:*",
     "@pancakeswap/routing-sdk-addon-infinity": "workspace:*",
     "@pancakeswap/infinity-sdk": "1.0.7",
-    "viem": "catalog:"
+    "viem": "2.37.13"
   },
   "peerDependenciesMeta": {
     "@pancakeswap/routing-sdk-addon-stable-swap": {
@@ -61,7 +61,7 @@
     "@pancakeswap/tsconfig": "workspace:*",
     "@pancakeswap/infinity-sdk": "1.0.7",
     "tsup": "^6.7.0",
-    "viem": "catalog:"
+    "viem": "2.37.13"
   },
   "exports": {
     "./package.json": "./package.json",
