@@ -5,7 +5,15 @@ import {
   getUniversalRouterAddress,
   type Permit2Signature,
 } from "@pancakeswap/universal-router-sdk";
-import { MaxAllowanceTransferAmount, PermitSingle, getPermit2Address, PERMIT_EXPIRATION, PERMIT_SIG_EXPIRATION, AllowanceTransfer, Permit2ABI } from "@pancakeswap/permit2-sdk";
+import {
+  MaxAllowanceTransferAmount,
+  PermitSingle,
+  getPermit2Address,
+  PERMIT_EXPIRATION,
+  PERMIT_SIG_EXPIRATION,
+  AllowanceTransfer,
+  Permit2ABI,
+} from "@pancakeswap/permit2-sdk";
 import { Percent, Native, ChainId, CurrencyAmount, TradeType, ERC20Token } from "@pancakeswap/sdk";
 import {
   InfinityRouter,
@@ -20,13 +28,17 @@ import {
   type OnChainProvider,
 } from "@pancakeswap/smart-router";
 import { bscTokens } from "@pancakeswap/tokens";
-import { createPublicClient, http, decodeFunctionData, type Address } from "viem";
+import { customBscTokens } from "./config/bscTokens";
+import { poolManagerAddressCL } from "./config/contracts";
+import { poolIds } from "./config/poolIds";
+import { createPublicClient, http, decodeFunctionData, PublicClient, type Address, type Hex, type Chain } from "viem";
 import { bsc } from "viem/chains";
 import { findBestTrade, type Pool, type TradeWithGraph } from "@pancakeswap/routing-sdk";
 import { createV2Pool } from "@pancakeswap/routing-sdk-addon-v2";
 import { createV3Pool } from "@pancakeswap/routing-sdk-addon-v3";
 import { createInfinityBinPool, createInfinityCLPool } from "@pancakeswap/routing-sdk-addon-infinity";
 import { createStablePool } from "@pancakeswap/routing-sdk-addon-stable-swap";
+import { poolIdToPoolKey, decodeHooksRegistration, encodeHooksRegistration, CLPoolManagerAbi } from "@pancakeswap/infinity-sdk";
 import { decodeUniversalCalldata } from "./utils/calldataDecode";
 
 const getArgs = () => {
@@ -56,10 +68,15 @@ const getTokenBySymbol = (symbol: string): ERC20Token | Native => {
   }
 
   const token = bscTokens[symbol.toLowerCase() as keyof typeof bscTokens];
-  if (!token) {
+  if (token) {
+    return token;
+  }
+
+  const customToken = customBscTokens[symbol.toLowerCase() as keyof typeof customBscTokens];
+  if (!customToken) {
     throw new Error(`Token not found for symbol: ${symbol}`);
   }
-  return token;
+  return customToken;
 };
 
 const swapOptions = (options: Partial<PancakeSwapOptions>): PancakeSwapOptions => {
@@ -118,8 +135,8 @@ export const buildInfinityTrade = (
 };
 
 const toDeadline = (expiration: number): number => {
-  return Math.floor((Date.now() + expiration) / 1000)
-}
+  return Math.floor((Date.now() + expiration) / 1000);
+};
 
 export const makePermit = (
   token: Address,
@@ -147,6 +164,12 @@ const bep20Abi = require("./abis/bep20.json");
 const pancakeRouterAddressInBsc = "0xd9c500dff816a1da21a48a732d3498bf09dc9aeb";
 const bscRpcUrl = "https://bsc-dataseed.binance.org/";
 
+const getPoolId = (from: string, to: string): Hex | undefined => {
+  const key1 = `${from.toLowerCase()}/${to.toLowerCase()}`;
+  const key2 = `${to.toLowerCase()}/${from.toLowerCase()}`;
+  return poolIds[key1] || poolIds[key2];
+};
+
 const executeTransaction = async () => {
   const [privateKey, amount, fromToken, toToken] = getArgs();
   const swapFrom = getTokenBySymbol(fromToken);
@@ -163,21 +186,64 @@ const executeTransaction = async () => {
     batch: {
       multicall: {
         batchSize: 1024 * 200,
+        // wait: 16,
       },
     },
+    // pollingInterval: 6_000,
   });
 
-  const pools = await InfinityRouter.getInfinityClCandidatePools({
+  
+  const poolId = getPoolId(fromToken, toToken);
+  console.log("Pool ID:==========", poolId);
+  if (!poolId) {
+    throw new Error(`Pool not found for pair ${fromToken}/${toToken}`);
+  }
+  const poolKey = await poolIdToPoolKey({
+    poolId,
+    poolType: "CL",
+    publicClient: client as any,
+  });
+  console.log("Pool Key:", poolKey);
+
+  const clPoolManagerContract = new ethers.Contract(poolManagerAddressCL!, CLPoolManagerAbi, wallet);
+  const [ sqrtPriceX96,  tick,  protocolFee, lpFee] = await clPoolManagerContract.getSlot0(poolId);
+  const liquidity = await clPoolManagerContract.getLiquidity(poolId);
+
+  const pools2 = await InfinityRouter.getInfinityClCandidatePools({
     clientProvider: (() => client) as OnChainProvider,
     currencyA: swapFrom,
     currencyB: swapTo,
   });
+  // const filteredPools = pools.filter((pool) => pool.currency0.symbol === "KGEN" || pool.currency1.symbol === "KGEN");
+  const pools1 = [{
+    ...poolKey,
+    currency0: swapFrom,
+    currency1: swapTo,
+    id: "0xb9b436c3869da550f943d3493e262be84a20e53b22223810eb7aa12acb8b6d34",
+    type: PoolType.InfinityCL,
+    tickSpacing: poolKey!.parameters.tickSpacing,
+    sqrtRatioX96: sqrtPriceX96,
+    tick,
+    liquidity,
+    // protocolFee: BigInt(protocolFee),
+    // fee: lpFee,
+    hooksRegistration : encodeHooksRegistration(poolKey!.parameters.hooksRegistration),
+
+  } as any]
+  const pools = [...pools1, ...pools2]
+  console.log(pools);
+  
   // const filteredPools = pools.filter((pool) => pool.type === PoolType.InfinityCL);
   // const v3Pools = await InfinityRouter.getV3CandidatePools({
-  //   clientProvider: () => client,
+  //   clientProvider: (() => client) as OnChainProvider,
   //   currencyA: swapFrom,
   //   currencyB: swapTo,
   // });
+  // const filteredV3Pools = v3Pools.filter(pool =>
+  //   pool.token0.symbol === 'KGEN' || pool.token1.symbol === 'KGEN'
+  // );
+  // console.log(filteredV3Pools);
+  const amountIn = CurrencyAmount.fromRawAmount(swapFrom, amountInput);
   // const trade = await InfinityRouter.getBestTrade(amountIn, swapTo, TradeType.EXACT_INPUT, {
   //   gasPriceWei: () => client.getGasPrice(),
   //   candidatePools: v3Pools,
@@ -185,8 +251,8 @@ const executeTransaction = async () => {
   // if (!trade) {
   //   throw new Error("Unable to find a valid trade route");
   // }
+  // console.log("Trade found via InfinityRouter:", trade);
 
-  const amountIn = CurrencyAmount.fromRawAmount(swapFrom, amountInput);
   const bestTrade = await findBestTrade({
     amount: amountIn,
     quoteCurrency: swapTo,
@@ -204,25 +270,34 @@ const executeTransaction = async () => {
     const PERMIT2_ADDRESS = getPermit2Address(ChainId.BSC);
     const UNIVERSAL_ROUTER_ADDRESS = getUniversalRouterAddress(ChainId.BSC);
     const permit2Contract = new ethers.Contract(PERMIT2_ADDRESS!, Permit2ABI, wallet);
-    const [ permit2AllowanceAmount, permit2AllowanceExpiration, permit2AllowanceNonce ] = await permit2Contract.allowance(wallet.address, swapFrom.address, UNIVERSAL_ROUTER_ADDRESS);
+    const [permit2AllowanceAmount, permit2AllowanceExpiration, permit2AllowanceNonce] = await permit2Contract.allowance(
+      wallet.address,
+      swapFrom.address,
+      UNIVERSAL_ROUTER_ADDRESS
+    );
 
     const permitSingle = makePermit(
       swapFrom!.address,
       UNIVERSAL_ROUTER_ADDRESS,
       amountInput.toString(),
-      permit2AllowanceNonce,
+      permit2AllowanceNonce
     );
-    
-    const { domain, types, values } = AllowanceTransfer.getPermitData(permitSingle, PERMIT2_ADDRESS, ChainId.BSC)
-    const signature = await wallet.signTypedData(domain, types, values) as `0x${string}`;
+
+    const { domain, types, values } = AllowanceTransfer.getPermitData(permitSingle, PERMIT2_ADDRESS, ChainId.BSC);
+    const signature = (await wallet.signTypedData(domain, types, values)) as `0x${string}`;
 
     const erc20Contract = new ethers.Contract(swapFrom.address, bep20Abi, wallet);
     const ecr20Allowance = await erc20Contract.allowance(wallet.address, PERMIT2_ADDRESS);
-     // Default ERC20 approve amount 500, reduce the number of approve calls
+    // Default ERC20 approve amount 500, reduce the number of approve calls
     const DEFAULT_APPROVE_AMOUNT = ethers.parseUnits("500", swapFrom.decimals);
     const approveAmount = amountInput > DEFAULT_APPROVE_AMOUNT ? amountInput : DEFAULT_APPROVE_AMOUNT;
     if (ecr20Allowance < amountInput) {
-      console.log(`Current ${swapFrom.symbol} allowance ${ethers.formatUnits(ecr20Allowance, swapFrom.decimals)} is less than amount to swap ${ethers.formatUnits(amountInput, swapFrom.decimals)}`);
+      console.log(
+        `Current ${swapFrom.symbol} allowance ${ethers.formatUnits(
+          ecr20Allowance,
+          swapFrom.decimals
+        )} is less than amount to swap ${ethers.formatUnits(amountInput, swapFrom.decimals)}`
+      );
       const tx = await erc20Contract.approve(PERMIT2_ADDRESS, approveAmount);
       await tx.wait();
       console.log(`${swapFrom.symbol} approve Tx hash:`, tx.hash);
@@ -248,15 +323,15 @@ const executeTransaction = async () => {
   // console.log("Args:", args);
   // const decodedCommands = decodeUniversalCalldata(calldata);
 
-  const tx = await wallet.sendTransaction({
-    to: pancakeRouterAddressInBsc,
-    data: calldata,
-    value: value,
-    gasLimit: 700000n,
-  });
+  // const tx = await wallet.sendTransaction({
+  //   to: pancakeRouterAddressInBsc,
+  //   data: calldata,
+  //   value: value,
+  //   gasLimit: 700000n,
+  // });
 
-  const transaction = await tx.wait();
-  console.log("Transaction:", transaction);
+  // const transaction = await tx.wait();
+  // console.log("Transaction:", transaction);
 };
 
 (async () => {

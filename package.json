@@ -22,6 +22,7 @@
     "typescript": "~5.0.4"
   },
   "dependencies": {
+    "@pancakeswap/chains": "^0.7.0",
     "@pancakeswap/infinity-sdk": "^1.0.7",
     "@pancakeswap/permit2-sdk": "1.1.7",
     "@pancakeswap/routing-sdk": "workspace:*",
